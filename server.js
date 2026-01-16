@@ -635,34 +635,6 @@ app.get("/card", requireLogin, (req, res) => {
         </p>
       </div>
 
-      <details>
-            <summary>Staff Only 🔒</summary>
-            <p class="muted" style="margin-top:10px;">Enter Admin PIN to add a stamp or redeem a free cup.</p>
-
-            <form class="row" method="POST" action="/admin/add-stamp">
-                <input name="pin" placeholder="Admin PIN" type="password" required />
-                <button type="submit">+1 Stamp</button>
-            </form>
-
-            <form class="row" method="POST" action="/admin/redeem" style="margin-top:12px;">
-                <input name="pin" placeholder="Admin PIN" type="password" required />
-                <button type="submit">Redeem Free Cup</button>
-            </form>
-
-            <hr style="margin:14px 0;" />
-            <p class="muted" style="margin:0 0 10px 0;"><b>Forgot passcode?</b> Reset it here.</p>
-
-            <form class="row" method="POST" action="/admin/reset-passcode">
-                <input name="pin" placeholder="Admin PIN" type="password" required />
-                <input name="username" placeholder="Customer username" required />
-                <input name="newPasscode" placeholder="New passcode (min 4 chars)" type="password" required />
-                <button type="submit" class="secondary">Reset Passcode</button>
-            </form>
-
-            
-        </details>
-
-
       <p><a href="/logout">Logout</a></p>
       `
         )
