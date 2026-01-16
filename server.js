@@ -604,13 +604,13 @@ app.get("/card", requireLogin, (req, res) => {
         htmlPage(
             "Your Loyalty Card",
             `
-      <h2>Your Loyalty Card 🌿</h2>
+      <h2>${user.username}'s Loyalty Card 🌿</h2>
+
+       <div class="badge">
+          <span>Show this screen upon collection to earn a stamp.</span>
+        </div>
 
       <div class="card">
-        <div class="muted">Username</div>
-        <div class="big">${user.username}</div>
-        <hr />
-        <div class="muted">Stamps</div>
         <div class="stamp-grid">
             ${Array.from({ length: STAMPS_FOR_REWARD }).map((_, i) => {
                 const filled = i < user.stamps ? "filled" : "";
@@ -618,17 +618,13 @@ app.get("/card", requireLogin, (req, res) => {
             }).join("")}
         </div>
 
-        <div class="badge">
-          <span>Show this screen upon collection to earn a stamp.</span>
-        </div>
-
-        <p class="muted" style="margin-top:12px;">
+        <p class="muted" style="margin-top:12px; font-weight:300; color:#4a6fa5;">
           ${rewardUnlocked
-                ? "🎉 Reward unlocked! Enjoy your 7th cup free (any drink on our menu)."
-                : `${stampsToNext} more to unlock your 7th cup free (any drink on our menu).`
+                ? "🎉 Reward unlocked! Redeem your free drink from us (any drink on our menu) 🎉"
+                : `Collect ${stampsToNext} stamp(s) and enjoy a free cup on us 🤍`
             }
 
-          <p style="margin-top:10px; margin-bottom:0; font-weight:700; color:#950321;">
+          <p style="margin-top:10px; margin-bottom:0; font-size: 10px; font-weight:600; color:#950321;">
                 Rewards are non-transferable and not valid with other offers.
            </p>
 
