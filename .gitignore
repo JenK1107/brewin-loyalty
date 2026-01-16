@@ -1,0 +1,4 @@
+node_modules
+loyalty.db
+.env
+.DS_Store
