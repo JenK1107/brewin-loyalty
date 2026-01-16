@@ -129,6 +129,67 @@ function htmlPage(title, body) {
           flex: 0 0 auto;
         }
 
+        /* Stamp card */
+        .stamp-grid{
+            display:grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap:12px;
+            margin-top:10px;
+        }
+        .stamp{
+            aspect-ratio: 1 / 1;
+            border-radius: 18px;
+            border: 2px dashed rgba(149,3,33,0.28);
+            background: rgba(255,255,255,0.65);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            position:relative;
+            overflow:hidden;
+        }
+        .stamp .label{
+            font-weight:800;
+            letter-spacing:0.08em;
+            font-size:12px;
+            color: rgba(149,3,33,0.45);
+        }
+        .stamp.filled{
+            border-style: solid;
+            border-color: rgba(149,3,33,0.35);
+        }
+        .stamp.filled::after{
+            content:"STAMPED";
+            position:absolute;
+            inset:auto -25% auto -25%;
+            top:50%;
+            transform: translateY(-50%) rotate(-18deg);
+            text-align:center;
+            font-weight:900;
+            letter-spacing:0.12em;
+            font-size:18px;
+            color: rgba(149,3,33,0.22);
+            border: 2px solid rgba(149,3,33,0.22);
+            padding:8px 0;
+            background: rgba(255,250,239,0.6);
+        }
+
+        details summary{
+            cursor:pointer;
+            font-weight:800;
+            color: var(--primary);
+            list-style:none;
+        }
+        details summary::-webkit-details-marker{ display:none; }
+        details{
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: rgba(255,255,255,0.55);
+            padding: 14px;
+        }
+        details[open]{ background: rgba(255,255,255,0.75); }
+
+
+
         /* A2HS UI */
         #a2hs-btn { display:none; margin-top: 10px; }
         #ios-a2hs { display:none; }
@@ -255,7 +316,16 @@ app.get("/card", requireLogin, (req, res) => {
         <div class="big">${user.username}</div>
         <hr />
         <div class="muted">Stamps</div>
-        <div class="big">${user.stamps} / ${STAMPS_FOR_REWARD}</div>
+        <div class="stamp-grid">
+            ${Array.from({ length: STAMPS_FOR_REWARD }).map((_, i) => {
+                const filled = i < user.stamps ? "filled" : "";
+                return `<div class="stamp ${filled}"><div class="label">${i+1}</div></div>`;
+            }).join("")}
+        </div>
+        <p class="muted" style="margin-top:10px; margin-bottom:0;">
+            ${user.stamps} / ${STAMPS_FOR_REWARD} collected
+        </p>
+
 
         <div class="badge">
           <span class="dot"></span>
@@ -265,32 +335,33 @@ app.get("/card", requireLogin, (req, res) => {
         <p class="muted" style="margin-top:12px;">
           ${
             rewardUnlocked
-              ? "🎉 Reward unlocked! Enjoy your 6th cup free (any drink on our menu)."
-              : `${stampsToNext} more to unlock your 6th cup free (any drink on our menu).`
+              ? "🎉 Reward unlocked! Enjoy your 7th cup free (any drink on our menu)."
+              : `${stampsToNext} more to unlock your 7th cup free (any drink on our menu).`
           }
         </p>
 
         <p class="muted" style="margin-bottom:0;">Rewards claimed: ${user.rewards}</p>
       </div>
 
-      <div class="card">
-        <h3>Staff Only 🔒</h3>
-        <p class="muted">Enter Admin PIN to add a stamp or redeem a free cup.</p>
+      <details>
+            <summary>Staff Only 🔒</summary>
+            <p class="muted" style="margin-top:10px;">Enter Admin PIN to add a stamp or redeem a free cup.</p>
 
-        <form class="row" method="POST" action="/admin/add-stamp">
-          <input name="pin" placeholder="Admin PIN" type="password" required />
-          <button type="submit">+1 Stamp</button>
-        </form>
+            <form class="row" method="POST" action="/admin/add-stamp">
+                <input name="pin" placeholder="Admin PIN" type="password" required />
+                <button type="submit">+1 Stamp</button>
+            </form>
 
-        <form class="row" method="POST" action="/admin/redeem" style="margin-top:12px;">
-          <input name="pin" placeholder="Admin PIN" type="password" required />
-          <button type="submit">Redeem Free Cup</button>
-        </form>
+            <form class="row" method="POST" action="/admin/redeem" style="margin-top:12px;">
+                <input name="pin" placeholder="Admin PIN" type="password" required />
+                <button type="submit">Redeem Free Cup</button>
+            </form>
 
-        <p class="muted" style="margin-top:10px; margin-bottom:0;">
-          Rewards are non-transferable and not valid with other offers.
-        </p>
-      </div>
+            <p class="muted" style="margin-top:10px; margin-bottom:0;">
+                Rewards are non-transferable and not valid with other offers.
+            </p>
+        </details>
+
 
       <p><a href="/logout">Logout</a></p>
       `
