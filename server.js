@@ -1,50 +1,74 @@
+require("dotenv").config();
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
+console.log("SERVICE_ROLE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+
 const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
-const Database = require("better-sqlite3");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
-const db = new Database("loyalty.db");
 
 // ===== CONFIG =====
 const PORT = process.env.PORT || 3000;
 const ADMIN_PIN = process.env.ADMIN_PIN || "3825";
 const STAMPS_FOR_REWARD = 6;
 
-// ===== DB SETUP =====
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  passhash TEXT NOT NULL,
-  stamps INTEGER NOT NULL DEFAULT 0,
-  rewards INTEGER NOT NULL DEFAULT 0
+// ===== SUPABASE CLIENT =====
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars.");
+}
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-`);
 
+// ===== EXPRESS SETUP =====
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static("public")); // serve /public
+app.use(express.static("public"));
 app.use(
-    session({
-        secret: process.env.SESSION_SECRET || "change-this-secret",
-        resave: false,
-        saveUninitialized: false,
-    })
+  session({
+    secret: process.env.SESSION_SECRET || "change-this-secret",
+    resave: false,
+    saveUninitialized: false,
+  })
 );
 
+// ===== MIDDLEWARE HELPERS =====
 function requireLogin(req, res, next) {
-    if (!req.session.userId) return res.redirect("/");
-    next();
+  if (!req.session.userId) return res.redirect("/");
+  next();
 }
 
 function requireAdmin(req, res, next) {
-    if (!req.session.isAdmin) return res.redirect("/admin");
-    next();
+  if (!req.session.isAdmin) return res.redirect("/");
+  next();
 }
 
+// ===== DB HELPERS (SUPABASE) =====
+async function getUserById(id) {
+  return await supabase.from("users").select("*").eq("id", id).single();
+}
 
+async function getUserByUsername(username) {
+  return await supabase.from("users").select("*").eq("username", username).single();
+}
+
+async function createUser(username, passhash) {
+  return await supabase.from("users").insert({ username, passhash }).select("*").single();
+}
+
+async function updateUserById(id, patch) {
+  return await supabase.from("users").update(patch).eq("id", id).select("*").single();
+}
+
+async function updateUserByUsername(username, patch) {
+  return await supabase.from("users").update(patch).eq("username", username).select("*").single();
+}
+
+// ===== HTML SHELL =====
 function htmlPage(title, body) {
-    return `<!doctype html>
+  return `<!doctype html>
   <html>
     <head>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -128,151 +152,133 @@ function htmlPage(title, body) {
           line-height:1.2;
           margin-top: 10px;
         }
-        .badge .dot{
-          width:10px; height:10px;
-          border-radius:999px;
-          background: var(--primary);
-          flex: 0 0 auto;
-        }
 
         /* Stamp card */
         .stamp-grid{
-            display:grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap:12px;
-            margin-top:10px;
+          display:grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap:12px;
+          margin-top:10px;
         }
         .stamp{
-            aspect-ratio: 1 / 1;
-            border-radius: 18px;
-            border: 2px dashed rgba(149,3,33,0.28);
-            background: rgba(255,255,255,0.65);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            position:relative;
-            overflow:hidden;
+          aspect-ratio: 1 / 1;
+          border-radius: 18px;
+          border: 2px dashed rgba(149,3,33,0.28);
+          background: rgba(255,255,255,0.65);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          position:relative;
+          overflow:hidden;
         }
         .stamp .label{
-            font-weight:800;
-            letter-spacing:0.08em;
-            font-size:12px;
-            color: rgba(149,3,33,0.45);
+          font-weight:800;
+          letter-spacing:0.08em;
+          font-size:12px;
+          color: rgba(149,3,33,0.45);
         }
         .stamp.filled{
-            border-style: solid;
-            border-color: rgba(149,3,33,0.35);
+          border-style: solid;
+          border-color: rgba(149,3,33,0.35);
         }
         .stamp.filled::after{
-            content:"STAMPED";
-            position:absolute;
-            inset:auto -25% auto -25%;
-            top:50%;
-            transform: translateY(-50%) rotate(-18deg);
-            text-align:center;
-            font-weight:900;
-            letter-spacing:0.12em;
-            font-size:18px;
-            color: rgba(149,3,33,0.22);
-            border: 2px solid rgba(149,3,33,0.22);
-            padding:8px 0;
-            background: rgba(255,250,239,0.6);
+          content:"STAMPED";
+          position:absolute;
+          inset:auto -25% auto -25%;
+          top:50%;
+          transform: translateY(-50%) rotate(-18deg);
+          text-align:center;
+          font-weight:900;
+          letter-spacing:0.12em;
+          font-size:18px;
+          color: rgba(149,3,33,0.22);
+          border: 2px solid rgba(149,3,33,0.22);
+          padding:8px 0;
+          background: rgba(255,250,239,0.6);
         }
-
-        details summary{
-            cursor:pointer;
-            font-weight:800;
-            color: var(--primary);
-            list-style:none;
-        }
-        details summary::-webkit-details-marker{ display:none; }
-        details{
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            background: rgba(255,255,255,0.55);
-            padding: 14px;
-        }
-        details[open]{ background: rgba(255,255,255,0.75); }
 
         /* Layout polish */
-        .header{
-        display:flex; align-items:center; justify-content:space-between;
-        margin-bottom:8px;
-        }
-        .brand{
-        font-size:26px; font-weight:900; color: var(--primary);
-        letter-spacing:-0.02em;
-        }
-        .sub{
-        margin: 6px 0 16px 0;
-        }
+        .header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+        .brand{ font-size:26px; font-weight:900; color: var(--primary); letter-spacing:-0.02em; }
+        .sub{ margin: 6px 0 16px 0; }
 
         /* Tabs */
         .tabs{
-        display:grid;
-        grid-template-columns: 1fr 1fr;
-        gap:10px;
-        margin: 10px 0 14px 0;
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap:10px;
+          margin: 10px 0 14px 0;
         }
         .tabbtn{
-        width:100%;
-        background: rgba(255,255,255,0.8);
-        border: 1px solid rgba(149,3,33,0.14);
-        color: var(--primary);
-        font-weight:850;
-        padding: 12px 12px;
-        border-radius: 16px;
-        cursor:pointer;
+          width:100%;
+          background: rgba(255,255,255,0.8);
+          border: 1px solid rgba(149,3,33,0.14);
+          color: var(--primary);
+          font-weight:850;
+          padding: 12px 12px;
+          border-radius: 16px;
+          cursor:pointer;
         }
         .tabbtn.active{
-        background: var(--primary);
-        color: var(--bg);
-        border-color: var(--primary);
+          background: var(--primary);
+          color: var(--bg);
+          border-color: var(--primary);
         }
         .panel{ display:none; }
         .panel.active{ display:block; }
 
-        /* Inputs tighter */
-        .card h3{ margin-bottom: 12px; }
-        input{
-        border:1px solid rgba(74,111,165,0.25);
-        }
-        button{
-        border-radius:16px;
-        }
-
         /* Admin collapsible */
         details.staff{
-        margin-top: 18px;
-        border: 1px dashed rgba(149,3,33,0.18);
-        border-radius: 18px;
-        background: rgba(255,255,255,0.45);
-        padding: 12px 14px;
+          margin-top: 18px;
+          border: 1px dashed rgba(149,3,33,0.18);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.45);
+          padding: 12px 14px;
         }
         details.staff summary{
-        cursor:pointer;
-        font-weight:900;
-        color: var(--secondary);
+          cursor:pointer;
+          font-weight:900;
+          color: var(--secondary);
+          list-style:none;
         }
+        details.staff summary::-webkit-details-marker{ display:none; }
         details.staff[open] summary{ color: var(--primary); }
 
-        .footer{
-        margin-top: 28px;
-        padding-top: 18px;
-        text-align: center;
-        opacity: 0.7;
+        /* Admin dropdown sections */
+        details.admin{
+          margin-top: 14px;
+          border: 1px solid var(--border);
+          border-radius: 18px;
+          background: rgba(255,255,255,0.55);
+          padding: 14px;
         }
 
-        .footer img{
-        height: 60px;           /* adjust if needed */
-        width: auto;
+        details.admin summary{
+          cursor: pointer;
+          font-weight: 900;
+          color: var(--primary);
+          list-style: none;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
         }
 
-        .footer p{
-        margin-top: 6px;
-        font-size: 12px;
-        color: var(--secondary);
+        details.admin summary::-webkit-details-marker{
+          display: none;
         }
+
+        details.admin summary span{
+          font-size: 13px;
+          color: var(--secondary);
+          font-weight: 600;
+        }
+
+        details.admin[open]{
+          background: rgba(255,255,255,0.75);
+        }
+
+        .footer{ margin-top: 28px; padding-top: 18px; text-align: center; opacity: 0.7; }
+        .footer img{ height: 60px; width: auto; }
 
         /* A2HS UI */
         #a2hs-btn { display:none; margin-top: 10px; }
@@ -290,11 +296,10 @@ function htmlPage(title, body) {
         <img src="/icons/brand-logo.png" alt="Brewin’ Small logo" />
       </div>
 
-
-      <!-- Android install button (only shows when available) -->
+      <!-- Android install button -->
       <button id="a2hs-btn" class="secondary" onclick="handleInstallClick()">Add to Home Screen</button>
 
-      <!-- iOS helper tip (shows on iPhone Safari when not installed) -->
+      <!-- iOS helper tip -->
       <div id="ios-a2hs" class="a2hs-tip">
         <div class="big" style="font-size:20px;">Add to Home Screen 📲</div>
         <p class="muted" style="margin-top:8px; margin-bottom:0;">
@@ -310,63 +315,63 @@ function htmlPage(title, body) {
 // ===== ROUTES =====
 
 // ===== ADMIN AUTH =====
-
 app.post("/admin/login", (req, res) => {
-    const u = (req.body.username || "").trim();
-    const p = req.body.password || "";
+  const u = (req.body.username || "").trim();
+  const p = req.body.password || "";
 
-    const ADMIN_USER = process.env.ADMIN_USER || "admin";
-    const ADMIN_PASS = process.env.ADMIN_PASS || "3825";
+  const ADMIN_USER = process.env.ADMIN_USER || "admin";
+  const ADMIN_PASS = process.env.ADMIN_PASS || "3825";
 
-    if (u === ADMIN_USER && p === ADMIN_PASS) {
-        req.session.isAdmin = true;
-        return res.redirect("/admin/dashboard");
-    }
+  if (u === ADMIN_USER && p === ADMIN_PASS) {
+    req.session.isAdmin = true;
+    return res.redirect("/admin/dashboard");
+  }
 
-    return res.send(
-        htmlPage(
-            "Admin Login",
-            `<div class="card"><p class="muted">Invalid admin login.</p><p><a href="/admin">Try again</a></p></div>`
-        )
-    );
+  return res.send(
+    htmlPage(
+      "Admin Login",
+      `<div class="card"><p class="muted">Invalid admin login.</p><p><a href="/">Back</a></p></div>`
+    )
+  );
 });
 
 app.get("/admin/logout", (req, res) => {
-    req.session.isAdmin = false;
-    res.redirect("/");
+  req.session.isAdmin = false;
+  res.redirect("/");
 });
 
-app.get("/admin/dashboard", requireAdmin, (req, res) => {
-    const q = (req.query.q || "").trim().toLowerCase();
+// ===== ADMIN DASHBOARD =====
+app.get("/admin/dashboard", requireAdmin, async (req, res) => {
+  const q = (req.query.q || "").trim().toLowerCase();
 
-    let users = [];
-    if (q) {
-        users = db
-            .prepare("SELECT username, stamps, rewards FROM users WHERE username LIKE ? ORDER BY stamps DESC, username ASC")
-            .all(`%${q}%`);
-    } else {
-        users = db
-            .prepare("SELECT username, stamps, rewards FROM users ORDER BY stamps DESC, username ASC")
-            .all();
-    }
+  let query = supabase
+    .from("users")
+    .select("username, stamps, rewards")
+    .order("stamps", { ascending: false })
+    .order("username", { ascending: true });
 
-    const rows = users
-        .map(
-            (u) => `
+  if (q) query = query.ilike("username", `%${q}%`);
+
+  const { data: users, error } = await query;
+  const safeUsers = users || [];
+
+  const rows = safeUsers
+    .map(
+      (u) => `
       <tr>
         <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);"><b>${u.username}</b></td>
         <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${u.stamps}</td>
         <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${u.rewards}</td>
       </tr>`
-        )
-        .join("");
+    )
+    .join("");
 
-    res.send(
-        htmlPage(
-            "Admin Dashboard",
-            `
+  res.send(
+    htmlPage(
+      "Admin Dashboard",
+      `
       <h2>Admin Dashboard ☕️</h2>
-      <p class="muted">View customers, manage stamps and passcodes.</p>
+      <p class="muted">${error ? "DB error: " + error.message : "View customers, manage stamps and passcodes."}</p>
 
       <div class="card">
         <form class="row" method="GET" action="/admin/dashboard">
@@ -376,7 +381,7 @@ app.get("/admin/dashboard", requireAdmin, (req, res) => {
       </div>
 
       <div class="card">
-        <h3>Customers (${users.length})</h3>
+        <h3>Customers (${safeUsers.length})</h3>
         <div style="overflow:auto; border-radius:14px;">
           <table style="width:100%; border-collapse:collapse; min-width:420px;">
             <thead>
@@ -393,328 +398,271 @@ app.get("/admin/dashboard", requireAdmin, (req, res) => {
         </div>
       </div>
 
-      <div class="card">
-        <h3>Reset Customer Passcode</h3>
-        <p class="muted">Use this if a customer forgets their passcode.</p>
+      <details class="admin">
+        <summary>
+          Reset Customer Passcode
+          <span>Forgot login</span>
+        </summary>
+
+        <p class="muted" style="margin-top:10px;">
+          Use this if a customer forgets their passcode.
+        </p>
+
         <form class="row" method="POST" action="/admin/reset-passcode-dashboard">
           <input name="username" placeholder="Customer username" required />
           <input name="newPasscode" placeholder="New passcode (min 4 chars)" type="password" required />
           <button type="submit">Reset Passcode</button>
         </form>
-      </div>
+    </details>
 
-      <div class="card">
-        <h3>Stamp Actions</h3>
-        <p class="muted">Add a stamp or redeem a free cup by username.</p>
-        <form class="row" method="POST" action="/admin/add-stamp-by-username">
-          <input name="username" placeholder="Customer username" required />
-          <button type="submit">+1 Stamp</button>
-        </form>
+    <details class="admin">
+      <summary>
+        Stamp Actions
+        <span>Add / Redeem</span>
+      </summary>
 
-        <form class="row" method="POST" action="/admin/redeem-by-username" style="margin-top:12px;">
-          <input name="username" placeholder="Customer username" required />
-          <button type="submit" class="secondary">Redeem Free Cup</button>
-        </form>
-      </div>
+      <p class="muted" style="margin-top:10px;">
+        Add a stamp or redeem a free cup by username.
+      </p>
 
-      <p><a href="/admin/logout">Logout</a>
+      <form class="row" method="POST" action="/admin/add-stamp-by-username">
+        <input name="username" placeholder="Customer username" required />
+        <button type="submit">+1 Stamp</button>
+      </form>
+
+      <hr />
+
+      <form class="row" method="POST" action="/admin/redeem-by-username">
+        <input name="username" placeholder="Customer username" required />
+        <button type="submit" class="secondary">Redeem Free Cup</button>
+      </form>
+    </details>
+
+      <p><a href="/admin/logout">Logout</a></p>
       `
-        )
-    );
+    )
+  );
 });
 
-app.post("/admin/reset-passcode-dashboard", requireAdmin, (req, res) => {
-    const username = (req.body.username || "").trim().toLowerCase();
-    const newPasscode = req.body.newPasscode || "";
+// ===== ADMIN ACTIONS =====
+app.post("/admin/reset-passcode-dashboard", requireAdmin, async (req, res) => {
+  const username = (req.body.username || "").trim().toLowerCase();
+  const newPasscode = req.body.newPasscode || "";
 
-    if (username.length < 3 || newPasscode.length < 4) {
-        return res.send(htmlPage("Error", `<div class="card"><p class="muted">Username must be 3+ chars and passcode 4+.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
-    }
+  if (username.length < 3 || newPasscode.length < 4) {
+    return res.send(htmlPage("Error", `<div class="card"><p class="muted">Username must be 3+ chars and passcode 4+.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
+  }
 
-    const user = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
-    if (!user) {
-        return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
-    }
+  const found = await getUserByUsername(username);
+  if (found.error || !found.data) {
+    return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
+  }
 
-    const passhash = bcrypt.hashSync(newPasscode, 10);
-    db.prepare("UPDATE users SET passhash = ? WHERE id = ?").run(passhash, user.id);
+  const passhash = bcrypt.hashSync(newPasscode, 10);
+  await updateUserById(found.data.id, { passhash });
 
-    return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
+  return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
 });
 
-app.post("/admin/add-stamp-by-username", requireAdmin, (req, res) => {
-    const username = (req.body.username || "").trim().toLowerCase();
+app.post("/admin/add-stamp-by-username", requireAdmin, async (req, res) => {
+  const username = (req.body.username || "").trim().toLowerCase();
 
-    const user = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
-    if (!user) {
-        return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
-    }
+  const found = await getUserByUsername(username);
+  if (found.error || !found.data) {
+    return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
+  }
 
-    db.prepare("UPDATE users SET stamps = stamps + 1 WHERE id = ?").run(user.id);
-    return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
+  await updateUserById(found.data.id, { stamps: (found.data.stamps || 0) + 1 });
+  return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
 });
 
-app.post("/admin/redeem-by-username", requireAdmin, (req, res) => {
-    const username = (req.body.username || "").trim().toLowerCase();
+app.post("/admin/redeem-by-username", requireAdmin, async (req, res) => {
+  const username = (req.body.username || "").trim().toLowerCase();
 
-    const user = db.prepare("SELECT id, stamps FROM users WHERE username = ?").get(username);
-    if (!user) {
-        return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
-    }
+  const found = await getUserByUsername(username);
+  if (found.error || !found.data) {
+    return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
+  }
 
-    if (user.stamps < STAMPS_FOR_REWARD) {
-        return res.send(htmlPage("Not yet", `<div class="card"><p class="muted">Not enough stamps to redeem for this user.</p><p><a href="/admin/dashboard?q=${encodeURIComponent(username)}">Back</a></p></div>`));
-    }
+  if ((found.data.stamps || 0) < STAMPS_FOR_REWARD) {
+    return res.send(htmlPage("Not yet", `<div class="card"><p class="muted">Not enough stamps to redeem for this user.</p><p><a href="/admin/dashboard?q=${encodeURIComponent(username)}">Back</a></p></div>`));
+  }
 
-    db.prepare("UPDATE users SET stamps = stamps - ?, rewards = rewards + 1 WHERE id = ?")
-        .run(STAMPS_FOR_REWARD, user.id);
+  await updateUserById(found.data.id, {
+    stamps: found.data.stamps - STAMPS_FOR_REWARD,
+    rewards: (found.data.rewards || 0) + 1,
+  });
 
-    return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
+  return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
 });
 
-
-// Login/Register page
+// ===== CUSTOMER LOGIN PAGE =====
 app.get("/", (req, res) => {
-    if (req.session.isAdmin) return res.redirect("/admin/dashboard");
-    if (req.session.userId) return res.redirect("/card");
+  if (req.session.isAdmin) return res.redirect("/admin/dashboard");
+  if (req.session.userId) return res.redirect("/card");
 
-    res.send(
-        htmlPage(
-            "Brewin’ Small Loyalty",
-            `
+  res.send(
+    htmlPage(
+      "Brewin’ Small Loyalty",
+      `
         <div class="header">
-        <div class="brand">Brewin’ Small Loyalty ☕️</div>
+          <div class="brand">Brewin’ Small Loyalty ☕️</div>
         </div>
         <p class="muted sub">Login with your username + passcode. No apps needed.</p>
 
         <div class="tabs">
-        <button class="tabbtn active" id="tab-login" type="button" onclick="showTab('login')">Login</button>
-        <button class="tabbtn" id="tab-create" type="button" onclick="showTab('create')">Create</button>
+          <button class="tabbtn active" id="tab-login" type="button" onclick="showTab('login')">Login</button>
+          <button class="tabbtn" id="tab-create" type="button" onclick="showTab('create')">Create</button>
         </div>
 
         <div class="card panel active" id="panel-login">
-        <h3>Customer Login</h3>
-        <form class="row" method="POST" action="/login">
+          <h3>Customer Login</h3>
+          <form class="row" method="POST" action="/login">
             <input name="username" placeholder="Username" required />
             <input name="passcode" placeholder="Passcode" type="password" required />
             <button type="submit">Login</button>
-        </form>
+          </form>
         </div>
 
         <div class="card panel" id="panel-create">
-        <h3>Create Account</h3>
-        <form class="row" method="POST" action="/register">
+          <h3>Create Account</h3>
+          <form class="row" method="POST" action="/register">
             <input name="username" placeholder="Choose a username" required />
             <input name="passcode" placeholder="Choose a passcode" type="password" required />
             <p class="muted" style="margin-top:10px; margin-bottom:0;">Tip: choose something you’ll remember.</p>
             <button type="submit">Create</button>
-        </form>
+          </form>
         </div>
 
         <details class="staff">
-        <summary>Staff access 🔒</summary>
-        <div style="margin-top:12px;">
+          <summary>Staff access 🔒</summary>
+          <div style="margin-top:12px;">
             <form class="row" method="POST" action="/admin/login">
-            <input name="username" placeholder="Admin username" required />
-            <input name="password" placeholder="Admin password" type="password" required />
-            <button type="submit" class="secondary">Login as Admin</button>
+              <input name="username" placeholder="Admin username" required />
+              <input name="password" placeholder="Admin password" type="password" required />
+              <button type="submit" class="secondary">Login as Admin</button>
             </form>
-        </div>
+          </div>
         </details>
 
         <script>
-        function showTab(which){
+          function showTab(which){
             const loginBtn = document.getElementById('tab-login');
             const createBtn = document.getElementById('tab-create');
             const loginPanel = document.getElementById('panel-login');
             const createPanel = document.getElementById('panel-create');
 
             if(which === 'login'){
-            loginBtn.classList.add('active');
-            createBtn.classList.remove('active');
-            loginPanel.classList.add('active');
-            createPanel.classList.remove('active');
+              loginBtn.classList.add('active');
+              createBtn.classList.remove('active');
+              loginPanel.classList.add('active');
+              createPanel.classList.remove('active');
             } else {
-            createBtn.classList.add('active');
-            loginBtn.classList.remove('active');
-            createPanel.classList.add('active');
-            loginPanel.classList.remove('active');
+              createBtn.classList.add('active');
+              loginBtn.classList.remove('active');
+              createPanel.classList.add('active');
+              loginPanel.classList.remove('active');
             }
-        }
+          }
         </script>
-        `
-        )
-    );
+      `
+    )
+  );
 });
 
+// ===== CUSTOMER AUTH =====
+app.post("/register", async (req, res) => {
+  const username = (req.body.username || "").trim().toLowerCase();
+  const passcode = req.body.passcode || "";
 
-app.post("/register", (req, res) => {
-    const username = (req.body.username || "").trim().toLowerCase();
-    const passcode = req.body.passcode || "";
+  if (username.length < 3 || passcode.length < 4) {
+    return res.send(htmlPage("Error", `<div class="card"><p class="muted">Username must be 3+ characters, passcode 4+.</p><p><a href="/">Back</a></p></div>`));
+  }
 
-    if (username.length < 3 || passcode.length < 4) {
-        return res.send(
-            htmlPage("Error", `<div class="card"><p class="muted">Username must be 3+ characters, passcode 4+.</p><p><a href="/">Back</a></p></div>`)
-        );
+  try {
+    const passhash = bcrypt.hashSync(passcode, 10);
+    const created = await createUser(username, passhash);
+
+    if (created.error || !created.data) {
+      return res.send(htmlPage("Error", `<div class="card"><p class="muted">That username is taken. Try another.</p><p><a href="/">Back</a></p></div>`));
     }
 
-    try {
-        const passhash = bcrypt.hashSync(passcode, 10);
-        const stmt = db.prepare("INSERT INTO users (username, passhash) VALUES (?, ?)");
-        const info = stmt.run(username, passhash);
-        req.session.userId = info.lastInsertRowid;
-        res.redirect("/card");
-    } catch (e) {
-        res.send(
-            htmlPage("Error", `<div class="card"><p class="muted">That username is taken. Try another.</p><p><a href="/">Back</a></p></div>`)
-        );
-    }
-});
-
-app.post("/login", (req, res) => {
-    const username = (req.body.username || "").trim().toLowerCase();
-    const passcode = req.body.passcode || "";
-
-    const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
-    if (!user) {
-        return res.send(htmlPage("Error", `<div class="card"><p class="muted">Invalid login.</p><p><a href="/">Back</a></p></div>`));
-    }
-
-    const ok = bcrypt.compareSync(passcode, user.passhash);
-    if (!ok) {
-        return res.send(htmlPage("Error", `<div class="card"><p class="muted">Invalid login.</p><p><a href="/">Back</a></p></div>`));
-    }
-
-    req.session.userId = user.id;
+    req.session.userId = created.data.id;
     res.redirect("/card");
+  } catch {
+    res.send(htmlPage("Error", `<div class="card"><p class="muted">Something went wrong.</p><p><a href="/">Back</a></p></div>`));
+  }
+});
+
+app.post("/login", async (req, res) => {
+  const username = (req.body.username || "").trim().toLowerCase();
+  const passcode = req.body.passcode || "";
+
+  const found = await getUserByUsername(username);
+  if (found.error || !found.data) {
+    return res.send(htmlPage("Error", `<div class="card"><p class="muted">Invalid login.</p><p><a href="/">Back</a></p></div>`));
+  }
+
+  const ok = bcrypt.compareSync(passcode, found.data.passhash);
+  if (!ok) {
+    return res.send(htmlPage("Error", `<div class="card"><p class="muted">Invalid login.</p><p><a href="/">Back</a></p></div>`));
+  }
+
+  req.session.userId = found.data.id;
+  res.redirect("/card");
 });
 
 app.get("/logout", (req, res) => {
-    req.session.destroy(() => res.redirect("/"));
+  req.session.destroy(() => res.redirect("/"));
 });
 
-// Customer card page
-app.get("/card", requireLogin, (req, res) => {
-    const user = db.prepare("SELECT username, stamps, rewards FROM users WHERE id = ?").get(req.session.userId);
+// ===== CUSTOMER CARD =====
+app.get("/card", requireLogin, async (req, res) => {
+  const found = await getUserById(req.session.userId);
+  if (found.error || !found.data) {
+    return res.redirect("/logout");
+  }
 
-    const stampsToNext = Math.max(STAMPS_FOR_REWARD - user.stamps, 0);
-    const rewardUnlocked = user.stamps >= STAMPS_FOR_REWARD;
+  const user = found.data;
+  const stampsToNext = Math.max(STAMPS_FOR_REWARD - (user.stamps || 0), 0);
+  const rewardUnlocked = (user.stamps || 0) >= STAMPS_FOR_REWARD;
 
-    res.send(
-        htmlPage(
-            "Your Loyalty Card",
-            `
+  res.send(
+    htmlPage(
+      "Your Loyalty Card",
+      `
       <h2>${user.username}'s Loyalty Card 🌿</h2>
 
-       <div class="badge">
-          <span>Show this screen upon collection to earn a stamp.</span>
-        </div>
+      <div class="badge">
+        <span>Show this screen upon collection to earn a stamp.</span>
+      </div>
 
       <div class="card">
         <div class="stamp-grid">
-            ${Array.from({ length: STAMPS_FOR_REWARD }).map((_, i) => {
-                const filled = i < user.stamps ? "filled" : "";
-                return `<div class="stamp ${filled}"><div class="label">${i + 1}</div></div>`;
-            }).join("")}
+          ${Array.from({ length: STAMPS_FOR_REWARD }).map((_, i) => {
+        const filled = i < (user.stamps || 0) ? "filled" : "";
+        return `<div class="stamp ${filled}"><div class="label">${i + 1}</div></div>`;
+      }).join("")}
         </div>
 
         <p class="muted" style="margin-top:12px; font-weight:300; color:#4a6fa5;">
           ${rewardUnlocked
-                ? "🎉 Reward unlocked! Redeem your free drink from us (any drink on our menu) 🎉"
-                : `Collect ${stampsToNext} stamp(s) and enjoy a free cup on us 🤍`
-            }
+        ? "🎉 Reward unlocked! Redeem your free drink from us (any drink on our menu) 🎉"
+        : `Collect ${stampsToNext} stamp(s) and enjoy a free cup on us 🤍`
+      }
+        </p>
 
-          <p style="margin-top:10px; margin-bottom:0; font-size: 10px; font-weight:600; color:#950321;">
-                Rewards are non-transferable and not valid with other offers.
-           </p>
-
+        <p style="margin-top:10px; margin-bottom:0; font-size: 10px; font-weight:600; color:#950321;">
+          Rewards are non-transferable and not valid with other offers.
         </p>
       </div>
 
       <p><a href="/logout">Logout</a></p>
       `
-        )
-    );
+    )
+  );
 });
-
-// Admin: add stamp
-app.post("/admin/add-stamp", requireLogin, (req, res) => {
-    const pin = req.body.pin || "";
-    if (pin !== ADMIN_PIN) {
-        return res.send(htmlPage("Wrong PIN", `<div class="card"><p class="muted">Wrong PIN.</p><p><a href="/card">Back</a></p></div>`));
-    }
-    db.prepare("UPDATE users SET stamps = stamps + 1 WHERE id = ?").run(req.session.userId);
-    res.redirect("/card");
-});
-
-// Admin: redeem reward (any drink)
-app.post("/admin/redeem", requireLogin, (req, res) => {
-    const pin = req.body.pin || "";
-    if (pin !== ADMIN_PIN) {
-        return res.send(htmlPage("Wrong PIN", `<div class="card"><p class="muted">Wrong PIN.</p><p><a href="/card">Back</a></p></div>`));
-    }
-
-    const user = db.prepare("SELECT stamps, rewards FROM users WHERE id = ?").get(req.session.userId);
-    if (user.stamps < STAMPS_FOR_REWARD) {
-        return res.send(htmlPage("Not yet", `<div class="card"><p class="muted">Not enough stamps to redeem yet.</p><p><a href="/card">Back</a></p></div>`));
-    }
-
-    db.prepare("UPDATE users SET stamps = stamps - ?, rewards = rewards + 1 WHERE id = ?")
-        .run(STAMPS_FOR_REWARD, req.session.userId);
-
-    res.redirect("/card");
-});
-
-// Admin: reset user password
-app.post("/admin/reset-passcode", requireLogin, (req, res) => {
-    const pin = req.body.pin || "";
-    const username = (req.body.username || "").trim().toLowerCase();
-    const newPasscode = req.body.newPasscode || "";
-
-    if (pin !== ADMIN_PIN) {
-        return res.send(
-            htmlPage(
-                "Wrong PIN",
-                `<div class="card"><p class="muted">Wrong PIN.</p><p><a href="/card">Back</a></p></div>`
-            )
-        );
-    }
-
-    if (username.length < 3 || newPasscode.length < 4) {
-        return res.send(
-            htmlPage(
-                "Error",
-                `<div class="card"><p class="muted">Username must be 3+ chars and new passcode 4+.</p><p><a href="/card">Back</a></p></div>`
-            )
-        );
-    }
-
-    const user = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
-    if (!user) {
-        return res.send(
-            htmlPage(
-                "Not found",
-                `<div class="card"><p class="muted">Username not found.</p><p><a href="/card">Back</a></p></div>`
-            )
-        );
-    }
-
-    const passhash = bcrypt.hashSync(newPasscode, 10);
-    db.prepare("UPDATE users SET passhash = ? WHERE id = ?").run(passhash, user.id);
-
-    return res.send(
-        htmlPage(
-            "Passcode reset",
-            `<div class="card">
-        <h3>Passcode updated ✅</h3>
-        <p class="muted">Username <b>${username}</b> can now log in using the new passcode.</p>
-        <p><a href="/card">Back</a></p>
-      </div>`
-        )
-    );
-});
-
 
 app.listen(PORT, () => {
-    console.log(`Loyalty app running at http://localhost:${PORT}`);
+  console.log(`Loyalty app running at http://localhost:${PORT}`);
 });
