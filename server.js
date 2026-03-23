@@ -45,6 +45,18 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return date.toLocaleString("en-SG", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 // ===== DB HELPERS (SUPABASE) =====
 async function getUserById(id) {
   return await supabase.from("users").select("*").eq("id", id).single();
@@ -346,7 +358,7 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
 
   let query = supabase
     .from("users")
-    .select("username, stamps, rewards")
+    .select("username, stamps, rewards, last_stamped_at")
     .order("stamps", { ascending: false })
     .order("username", { ascending: true });
 
@@ -362,6 +374,7 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
         <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);"><b>${u.username}</b></td>
         <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${u.stamps}</td>
         <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${u.rewards}</td>
+        <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${formatDateTime(u.last_stamped_at)}</td>
       </tr>`
     )
     .join("");
@@ -389,10 +402,11 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
                 <th style="text-align:left; padding:10px 8px;">Username</th>
                 <th style="text-align:left; padding:10px 8px;">Stamps</th>
                 <th style="text-align:left; padding:10px 8px;">Rewards</th>
+                <th style="text-align:left; padding:10px 8px;">Last Stamped</th>
               </tr>
             </thead>
             <tbody>
-              ${rows || `<tr><td colspan="3" style="padding:12px 8px; border-top:1px solid rgba(149,3,33,0.10);" class="muted">No users found.</td></tr>`}
+              ${rows || `<tr><td colspan="4" style="padding:12px 8px; border-top:1px solid rgba(149,3,33,0.10);" class="muted">No users found.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -472,7 +486,10 @@ app.post("/admin/add-stamp-by-username", requireAdmin, async (req, res) => {
     return res.send(htmlPage("Not found", `<div class="card"><p class="muted">Username not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
   }
 
-  await updateUserById(found.data.id, { stamps: (found.data.stamps || 0) + 1 });
+  await updateUserById(found.data.id, {
+    stamps: (found.data.stamps || 0) + 1,
+    last_stamped_at: new Date().toISOString(),
+  });
   return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
 });
 
@@ -648,7 +665,7 @@ app.get("/card", requireLogin, async (req, res) => {
         <p class="muted" style="margin-top:12px; font-weight:300; color:#4a6fa5;">
           ${rewardUnlocked
         ? "🎉 Reward unlocked! Redeem your free drink from us (any drink on our menu) 🎉"
-        : `Collect ${stampsToNext} stamp(s) and enjoy a free cup on us 🤍`
+        : `Collect ${stampsToNext} more stamp(s) and enjoy a free cup on us 🤍`
       }
         </p>
 
