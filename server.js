@@ -65,6 +65,37 @@ function getUserLevel(totalStampsEarned) {
   return "New Sipper 🌱";
 }
 
+function renderConfettiScript() {
+  return `
+    <script>
+      (function () {
+        const alreadyPlayed = sessionStorage.getItem("reward_confetti_played");
+        if (alreadyPlayed) return;
+
+        sessionStorage.setItem("reward_confetti_played", "true");
+
+        const wrap = document.createElement("div");
+        wrap.className = "confetti-wrap";
+        document.body.appendChild(wrap);
+
+        for (let i = 0; i < 80; i++) {
+          const piece = document.createElement("div");
+          piece.className = "confetti";
+          piece.style.left = Math.random() * 100 + "vw";
+          piece.style.animationDuration = (2.8 + Math.random() * 1.8) + "s";
+          piece.style.animationDelay = (Math.random() * 0.3) + "s";
+          piece.style.transform = "rotate(" + (Math.random() * 360) + "deg)";
+          wrap.appendChild(piece);
+        }
+
+        setTimeout(() => {
+          wrap.remove();
+        }, 4500);
+      })();
+    </script>
+  `;
+}
+
 // ===== DB HELPERS (SUPABASE) =====
 async function getUserById(id) {
   return await supabase.from("users").select("*").eq("id", id).single();
@@ -445,6 +476,55 @@ function htmlPage(title, body) {
         padding:6px 10px;
         font-size:12px;
         border-radius:10px;
+      }
+
+      .reward-banner{
+        margin-top:12px;
+        padding:14px 16px;
+        border-radius:16px;
+        background: linear-gradient(135deg, rgba(149,3,33,0.10), rgba(74,111,165,0.12));
+        border: 1px solid rgba(149,3,33,0.14);
+        text-align:center;
+        font-weight:900;
+        color: var(--primary);
+        font-size:18px;
+        line-height:1.3;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .confetti-wrap{
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 9999;
+      }
+
+      .confetti{
+        position: absolute;
+        top: -20px;
+        width: 10px;
+        height: 16px;
+        border-radius: 2px;
+        opacity: 0.9;
+        animation: confetti-fall linear forwards;
+      }
+
+      .confetti:nth-child(4n){ background: #950321; }
+      .confetti:nth-child(4n+1){ background: #4a6fa5; }
+      .confetti:nth-child(4n+2){ background: #ffcf5c; }
+      .confetti:nth-child(4n+3){ background: #ffffff; }
+
+      @keyframes confetti-fall {
+        0% {
+          transform: translateY(0) rotate(0deg);
+          opacity: 0.95;
+        }
+        100% {
+          transform: translateY(110vh) rotate(540deg);
+          opacity: 0;
+        }
       }
 
       </style>
@@ -848,10 +928,22 @@ app.get("/card", requireLogin, async (req, res) => {
         </div>
 
         <p class="muted" style="margin-top:12px; font-weight:300; color:#4a6fa5;">
-          ${rewardUnlocked
-        ? "🎉 Reward unlocked! Redeem your free drink from us (any drink on our menu) 🎉"
-        : `Collect ${stampsToNext} more stamp(s) and enjoy a free cup on us 🤍`
-      }
+          ${
+            rewardUnlocked
+              ? `
+                <div class="reward-banner">
+                  🎉 YOU UNLOCKED A FREE CUP 🎉
+                </div>
+                <p class="muted" style="margin-top:12px; font-weight:300; color:#4a6fa5;">
+                  Redeem your free drink from us (any drink on our menu) 🤍
+                </p>
+              `
+              : `
+                <p class="muted" style="margin-top:12px; font-weight:300; color:#4a6fa5;">
+                  Collect ${stampsToNext} stamp(s) and enjoy a free cup on us 🤍
+                </p>
+              `
+          }
         </p>
 
         <p style="margin-top:10px; margin-bottom:0; font-size: 10px; font-weight:600; color:#950321;">
@@ -860,6 +952,7 @@ app.get("/card", requireLogin, async (req, res) => {
       </div>
 
       <p><a href="/logout">Logout</a></p>
+      ${rewardUnlocked ? renderConfettiScript() : ""}
       `
     )
   );
