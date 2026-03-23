@@ -49,10 +49,9 @@ function formatDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
   return date.toLocaleString("en-SG", {
-    year: "numeric",
+    day: "2-digit",
     month: "short",
-    day: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
   });
 }
@@ -298,6 +297,147 @@ function htmlPage(title, body) {
         .a2hs-tip { border:1px dashed rgba(149,3,33,0.18); border-radius:18px; padding:14px; margin:12px 0; background: rgba(255,255,255,0.55); }
 
         a{ color: var(--secondary); text-decoration: none; font-weight: 650; }
+
+      table{
+        width:100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      th, td{
+        padding: 10px 8px;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th{
+        word-break: keep-all;
+        overflow-wrap: normal;
+      }
+
+      td{
+        overflow-wrap: break-word;
+        word-break: break-word;
+      }
+
+      /* Column sizing */
+      .col-username{ width: 18%; }
+      .col-stamps{ width: 10%; }
+      .col-rewards{ width: 10%; }
+      .col-last{ width: 18%; }
+      .col-actions{ width: 44%; }
+
+      .username-cell{
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .admin-user-list{
+        display:grid;
+        gap:10px;
+        margin-top:12px;
+        max-height:320px;
+        overflow-y:auto;
+        padding-right:4px;
+      }
+
+      details.admin-customer{
+        border:1px solid rgba(149,3,33,0.10);
+        border-radius:16px;
+        background: rgba(255,255,255,0.45);
+        padding:12px 14px;
+      }
+
+      details.admin-customer summary{
+        cursor:pointer;
+        list-style:none;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+      }
+
+      details.admin-customer summary::-webkit-details-marker{
+        display:none;
+      }
+
+      .admin-customer-main{
+        display:flex;
+        flex-direction:column;
+        gap:4px;
+      }
+
+      .admin-customer-name{
+        font-size:18px;
+        font-weight:800;
+        color: var(--primary);
+        line-height:1.1;
+        word-break:break-word;
+      }
+
+      .admin-customer-mini{
+        font-size:13px;
+        color: var(--secondary);
+      }
+
+      .admin-customer-stamps{
+        font-size:16px;
+        font-weight:800;
+        color: var(--primary);
+        white-space:nowrap;
+      }
+
+      .admin-customer-body{
+        margin-top:12px;
+        padding-top:12px;
+        border-top:1px solid rgba(149,3,33,0.08);
+      }
+
+      .admin-user-stats{
+        display:grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap:8px;
+      }
+
+      .admin-stat{
+        background: rgba(255,255,255,0.65);
+        border:1px solid rgba(149,3,33,0.08);
+        border-radius:10px;
+        padding:8px 10px;
+      }
+
+      .admin-stat-label{
+        font-size:11px;
+        color: var(--secondary);
+        margin-bottom:2px;
+      }
+
+      .admin-stat-value{
+        font-size:15px;
+        font-weight:800;
+        color: var(--primary);
+        line-height:1.2;
+      }
+
+      .admin-user-actions{
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        margin-top:10px;
+      }
+
+      .admin-user-actions form{
+        margin:0;
+      }
+
+      .admin-user-actions button{
+        margin:0;
+        width:auto;
+        padding:6px 10px;
+        font-size:12px;
+        border-radius:10px;
+      }
+
       </style>
     </head>
     <body>
@@ -370,12 +510,54 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
   const rows = safeUsers
     .map(
       (u) => `
-      <tr>
-        <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);"><b>${u.username}</b></td>
-        <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${u.stamps}</td>
-        <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${u.rewards}</td>
-        <td style="padding:10px 8px; border-top:1px solid rgba(149,3,33,0.10);">${formatDateTime(u.last_stamped_at)}</td>
-      </tr>`
+        <details class="admin-customer">
+          <summary>
+            <div class="admin-customer-main">
+              <div class="admin-customer-name">${u.username}</div>
+              <div class="admin-customer-mini">Last stamped: ${formatDateTime(u.last_stamped_at)}</div>
+            </div>
+            <div class="admin-customer-stamps">${u.stamps} stamp${u.stamps === 1 ? "" : "s"}</div>
+          </summary>
+
+          <div class="admin-customer-body">
+            <div class="admin-user-stats">
+              <div class="admin-stat">
+                <div class="admin-stat-label">Stamps</div>
+                <div class="admin-stat-value">${u.stamps}</div>
+              </div>
+
+              <div class="admin-stat">
+                <div class="admin-stat-label">Rewards</div>
+                <div class="admin-stat-value">${u.rewards}</div>
+              </div>
+
+              <div class="admin-stat">
+                <div class="admin-stat-label">Last Stamped</div>
+                <div class="admin-stat-value">${formatDateTime(u.last_stamped_at)}</div>
+              </div>
+            </div>
+
+            <div class="admin-user-actions">
+              <form method="POST" action="/admin/add-stamp-by-username">
+                <input type="hidden" name="username" value="${u.username}" />
+                <button type="submit">+1 Stamp</button>
+              </form>
+
+              <form method="POST" action="/admin/redeem-by-username">
+                <input type="hidden" name="username" value="${u.username}" />
+                <button
+                  type="submit"
+                  class="secondary"
+                  ${u.stamps < STAMPS_FOR_REWARD ? "disabled" : ""}
+                  style="${u.stamps < STAMPS_FOR_REWARD ? "opacity:0.5; cursor:not-allowed;" : ""}"
+                >
+                  Redeem
+                </button>
+              </form>
+            </div>
+          </div>
+        </details>
+      `
     )
     .join("");
 
@@ -395,20 +577,8 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
 
       <div class="card">
         <h3>Customers (${safeUsers.length})</h3>
-        <div style="overflow:auto; border-radius:14px;">
-          <table style="width:100%; border-collapse:collapse; min-width:420px;">
-            <thead>
-              <tr>
-                <th style="text-align:left; padding:10px 8px;">Username</th>
-                <th style="text-align:left; padding:10px 8px;">Stamps</th>
-                <th style="text-align:left; padding:10px 8px;">Rewards</th>
-                <th style="text-align:left; padding:10px 8px;">Last Stamped</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows || `<tr><td colspan="4" style="padding:12px 8px; border-top:1px solid rgba(149,3,33,0.10);" class="muted">No users found.</td></tr>`}
-            </tbody>
-          </table>
+        <div class="admin-user-list">
+          ${rows || `<div class="muted">No users found.</div>`}
         </div>
       </div>
 
