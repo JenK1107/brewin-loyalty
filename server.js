@@ -56,6 +56,15 @@ function formatDateTime(value) {
   });
 }
 
+function getUserLevel(totalStampsEarned) {
+  const total = totalStampsEarned || 0;
+
+  if (total >= 20) return "Brewin’ Bestie ☕️";
+  if (total >= 12) return "Regularly Brewin' 🫧";
+  if (total >= 6) return "Cozy Sipper ☁️";
+  return "New Sipper 🌱";
+}
+
 // ===== DB HELPERS (SUPABASE) =====
 async function getUserById(id) {
   return await supabase.from("users").select("*").eq("id", id).single();
@@ -498,7 +507,7 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
 
   let query = supabase
     .from("users")
-    .select("username, stamps, rewards, last_stamped_at")
+    .select("username, stamps, rewards, last_stamped_at, total_stamps_earned")
     .order("stamps", { ascending: false })
     .order("username", { ascending: true });
 
@@ -514,6 +523,7 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
           <summary>
             <div class="admin-customer-main">
               <div class="admin-customer-name">${u.username}</div>
+              <div class="admin-customer-mini">${getUserLevel(u.total_stamps_earned)}</div>
               <div class="admin-customer-mini">Last stamped: ${formatDateTime(u.last_stamped_at)}</div>
             </div>
             <div class="admin-customer-stamps">${u.stamps} stamp${u.stamps === 1 ? "" : "s"}</div>
@@ -658,6 +668,7 @@ app.post("/admin/add-stamp-by-username", requireAdmin, async (req, res) => {
 
   await updateUserById(found.data.id, {
     stamps: (found.data.stamps || 0) + 1,
+    total_stamps_earned: (found.data.total_stamps_earned || 0) + 1,
     last_stamped_at: new Date().toISOString(),
   });
   return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
@@ -819,6 +830,10 @@ app.get("/card", requireLogin, async (req, res) => {
       "Your Loyalty Card",
       `
       <h2>${user.username}'s Loyalty Card 🌿</h2>
+
+      <p class="muted" style="margin-bottom:10px;">
+        Level: <b style="color:#950321;">${getUserLevel(user.total_stamps_earned)}</b>
+      </p>
 
       <div class="badge">
         <span>Show this screen upon collection to earn a stamp.</span>
