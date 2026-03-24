@@ -6,6 +6,8 @@ const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const { createClient } = require("@supabase/supabase-js");
+const QRCode = require("qrcode");
+const crypto = require("crypto");
 
 const app = express();
 
@@ -41,7 +43,10 @@ function requireLogin(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (!req.session.isAdmin) return res.redirect("/");
+  if (!req.session.isAdmin) {
+    const nextUrl = encodeURIComponent(req.originalUrl);
+    return res.redirect(`/?admin=1&next=${nextUrl}`);
+  }
   next();
 }
 
@@ -103,6 +108,26 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function getBaseUrl(req) {
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+function signQrPayload(userId) {
+  const secret = process.env.QR_SIGNING_SECRET || "change-this-qr-secret";
+  return crypto
+    .createHmac("sha256", secret)
+    .update(String(userId))
+    .digest("hex");
+}
+
+function verifyQrPayload(userId, sig) {
+  const expected = signQrPayload(userId);
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(sig || "")
+  );
 }
 
 // ===== DB HELPERS (SUPABASE) =====
@@ -639,6 +664,68 @@ function htmlPage(title, body) {
         opacity: 0.9;
       }
 
+      /* QR CODE */
+      .qr-card{
+        margin-top:14px;
+        padding:16px;
+        border-radius:18px;
+        background: rgba(255,255,255,0.65);
+        border: 1px solid rgba(149,3,33,0.10);
+        text-align:center;
+      }
+
+      .qr-card img{
+        width: 220px;
+        max-width: 100%;
+        height: auto;
+        border-radius: 14px;
+        background: white;
+        padding: 10px;
+      }
+
+      .qr-card .qr-title{
+        font-size:16px;
+        font-weight:800;
+        color: var(--primary);
+        margin-bottom:10px;
+      }
+
+      .qr-card .qr-note{
+        font-size:13px;
+        color: var(--secondary);
+        margin-top:10px;
+        line-height:1.4;
+      }
+
+      .qr-actions{
+        display:flex;
+        gap:10px;
+        justify-content:center;
+        flex-wrap:wrap;
+        margin-top:12px;
+      }
+
+      .qr-actions a{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        padding:10px 14px;
+        border-radius:12px;
+        font-weight:800;
+        text-decoration:none;
+        border:1px solid rgba(149,3,33,0.10);
+      }
+
+      .qr-actions .save-btn{
+        background:#4a6fa5;
+        color:#fffaef;
+      }
+
+      .qr-actions .open-btn{
+        background:rgba(74,111,165,0.10);
+        color:var(--primary);
+      }
+
       </style>
     </head>
     <body>
@@ -674,10 +761,11 @@ app.post("/admin/login", (req, res) => {
 
   const ADMIN_USER = process.env.ADMIN_USER || "admin";
   const ADMIN_PASS = process.env.ADMIN_PASS || "3825";
+  const nextUrl = req.body.next || "/admin/dashboard";
 
   if (u === ADMIN_USER && p === ADMIN_PASS) {
     req.session.isAdmin = true;
-    return res.redirect("/admin/dashboard");
+    return res.redirect(nextUrl);
   }
 
   return res.send(
@@ -917,8 +1005,144 @@ app.post("/admin/clear-broadcast", requireAdmin, async (req, res) => {
   return res.redirect("/admin/dashboard");
 });
 
+app.get("/admin/scan-user", requireAdmin, async (req, res) => {
+  const userId = req.query.id || "";
+  const sig = req.query.sig || "";
+
+  if (!userId || !sig) {
+    return res.send(
+      htmlPage(
+        "Invalid QR",
+        `<div class="card"><p class="muted">This QR code is invalid.</p><p><a href="/admin/dashboard">Back to dashboard</a></p></div>`
+      )
+    );
+  }
+
+  if (!verifyQrPayload(userId, sig)) {
+    return res.send(
+      htmlPage(
+        "Invalid QR",
+        `<div class="card"><p class="muted">This QR code could not be verified.</p><p><a href="/admin/dashboard">Back to dashboard</a></p></div>`
+      )
+    );
+  }
+
+  const found = await getUserById(userId);
+  if (found.error || !found.data) {
+    return res.send(
+      htmlPage(
+        "User Not Found",
+        `<div class="card"><p class="muted">This user could not be found.</p><p><a href="/admin/dashboard">Back to dashboard</a></p></div>`
+      )
+    );
+  }
+
+  const user = found.data;
+
+  res.send(
+    htmlPage(
+      "Scan User",
+      `
+      <h2>Scan Result ☕️</h2>
+
+      <div class="card">
+        <h3 style="margin-bottom:6px;">${user.username}</h3>
+        <p class="muted" style="margin-bottom:12px;">${getUserLevel(user.total_stamps_earned)}</p>
+
+        <div class="admin-user-stats">
+          <div class="admin-stat">
+            <div class="admin-stat-label">Stamps</div>
+            <div class="admin-stat-value">${user.stamps || 0}</div>
+          </div>
+
+          <div class="admin-stat">
+            <div class="admin-stat-label">Rewards</div>
+            <div class="admin-stat-value">${user.rewards || 0}</div>
+          </div>
+
+          <div class="admin-stat">
+            <div class="admin-stat-label">Last Stamped</div>
+            <div class="admin-stat-value">${formatDateTime(user.last_stamped_at)}</div>
+          </div>
+        </div>
+
+        <div class="admin-user-actions" style="margin-top:14px;">
+          <form method="POST" action="/admin/add-stamp-by-id">
+            <input type="hidden" name="id" value="${user.id}" />
+            <button type="submit">+1 Stamp</button>
+          </form>
+
+          <form method="POST" action="/admin/redeem-by-id">
+            <input type="hidden" name="id" value="${user.id}" />
+            <button
+              type="submit"
+              class="secondary"
+              ${(user.stamps || 0) < STAMPS_FOR_REWARD ? "disabled" : ""}
+              style="${(user.stamps || 0) < STAMPS_FOR_REWARD ? "opacity:0.5; cursor:not-allowed;" : ""}"
+            >
+              Redeem Free Cup
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <p><a href="/admin/dashboard">Back to dashboard</a></p>
+      `
+    )
+  );
+});
+
+app.post("/admin/add-stamp-by-id", requireAdmin, async (req, res) => {
+  const id = req.body.id || "";
+
+  const found = await getUserById(id);
+  if (found.error || !found.data) {
+    return res.send(htmlPage("Not found", `<div class="card"><p class="muted">User not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
+  }
+
+  await updateUserById(found.data.id, {
+    stamps: (found.data.stamps || 0) + 1,
+    total_stamps_earned: (found.data.total_stamps_earned || 0) + 1,
+    last_stamped_at: new Date().toISOString(),
+  });
+
+  const sig = signQrPayload(found.data.id);
+  return res.redirect(`/admin/scan-user?id=${encodeURIComponent(found.data.id)}&sig=${encodeURIComponent(sig)}`);
+});
+
+app.post("/admin/redeem-by-id", requireAdmin, async (req, res) => {
+  const id = req.body.id || "";
+
+  const found = await getUserById(id);
+  if (found.error || !found.data) {
+    return res.send(htmlPage("Not found", `<div class="card"><p class="muted">User not found.</p><p><a href="/admin/dashboard">Back</a></p></div>`));
+  }
+
+  if ((found.data.stamps || 0) < STAMPS_FOR_REWARD) {
+    const sig = signQrPayload(found.data.id);
+    return res.send(
+      htmlPage(
+        "Not yet",
+        `<div class="card"><p class="muted">Not enough stamps to redeem yet.</p><p><a href="/admin/scan-user?id=${encodeURIComponent(found.data.id)}&sig=${encodeURIComponent(sig)}">Back</a></p></div>`
+      )
+    );
+  }
+
+  await updateUserById(found.data.id, {
+    stamps: found.data.stamps - STAMPS_FOR_REWARD,
+    rewards: (found.data.rewards || 0) + 1,
+  });
+
+  const sig = signQrPayload(found.data.id);
+  return res.redirect(`/admin/scan-user?id=${encodeURIComponent(found.data.id)}&sig=${encodeURIComponent(sig)}`);
+});
+
 // ===== CUSTOMER LOGIN PAGE =====
 app.get("/", (req, res) => {
+
+  const showAdmin = req.query.admin === "1";
+  const nextUrl = req.query.next || "/admin/dashboard";
+
   if (req.session.isAdmin) return res.redirect("/admin/dashboard");
   if (req.session.userId) return res.redirect("/card");
 
@@ -958,10 +1182,11 @@ app.get("/", (req, res) => {
           </form>
         </div>
 
-        <details class="staff">
+        <details class="staff" ${showAdmin ? "open" : ""}>
           <summary>Staff access 🔒</summary>
           <div style="margin-top:12px;">
             <form class="row" method="POST" action="/admin/login">
+              <input type="hidden" name="next" value="${nextUrl}" />
               <input name="username" placeholder="Admin username" required />
               <input name="password" placeholder="Admin password" type="password" required />
               <button type="submit" class="secondary">Login as Admin</button>
@@ -1054,6 +1279,13 @@ app.get("/card", requireLogin, async (req, res) => {
   const broadcastResult = await getSetting("broadcast_message");
   const broadcastMessage = broadcastResult.data?.value || "";
 
+  const qrSig = signQrPayload(user.id);
+  const qrUrl = `${getBaseUrl(req)}/admin/scan-user?id=${encodeURIComponent(user.id)}&sig=${encodeURIComponent(qrSig)}`;
+  const qrDataUrl = await QRCode.toDataURL(qrUrl, {
+    width: 260,
+    margin: 2,
+  });
+
   res.send(
     htmlPage(
       "Your Loyalty Card",
@@ -1118,6 +1350,20 @@ app.get("/card", requireLogin, async (req, res) => {
         <p style="margin-top:10px; margin-bottom:0; font-size: 10px; font-weight:600; color:#950321;">
           Rewards are non-transferable and not valid with other offers.
         </p>
+      </div>
+
+      <div class="qr-card">
+        <div class="qr-title">Your Brewin’ Small QR</div>
+        <img src="${qrDataUrl}" alt="Your personal Brewin’ Small QR code" />
+
+        <div class="qr-note">
+          Show this QR at pickup for quick stamping and reward redemption.
+        </div>
+
+        <div class="qr-actions">
+          <a class="save-btn" href="${qrDataUrl}" download="${user.username}-brewin-small-qr.png">Save QR</a>
+          <a class="open-btn" href="${qrDataUrl}" target="_blank" rel="noopener noreferrer">Open QR</a>
+        </div>
       </div>
 
       <p><a href="/logout">Logout</a></p>
