@@ -938,18 +938,21 @@ app.get("/", (req, res) => {
 
         <div class="card panel active" id="panel-login">
           <h3>Customer Login</h3>
-          <form class="row" method="POST" action="/login">
-            <input name="username" placeholder="Username" required />
-            <input name="passcode" placeholder="Passcode" type="password" required />
+          <form class="row" method="POST" action="/login" autocomplete="on">
+            <input name="username" placeholder="Username" autocomplete="username" required />
+            <input name="passcode" placeholder="Passcode" type="password" autocomplete="current-password" required />
             <button type="submit">Login</button>
+            <p class="muted" style="margin-top:10px; margin-bottom:0;">
+              Tip: save your password in your browser for easier login next time.
+            </p>
           </form>
         </div>
 
         <div class="card panel" id="panel-create">
           <h3>Create Account</h3>
-          <form class="row" method="POST" action="/register">
-            <input name="username" placeholder="Choose a username" required />
-            <input name="passcode" placeholder="Choose a passcode" type="password" required />
+          <form class="row" method="POST" action="/register" autocomplete="on">
+            <input name="username" placeholder="Choose a username" autocomplete="username" required />
+            <input name="passcode" placeholder="Choose a passcode" type="password" autocomplete="new-password" required />
             <p class="muted" style="margin-top:10px; margin-bottom:0;">Tip: choose something you’ll remember.</p>
             <button type="submit">Create</button>
           </form>
