@@ -599,6 +599,46 @@ function htmlPage(title, body) {
         font-family: inherit;
       }
 
+      /* TELE + ORDER LINKS */
+      .link-buttons{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap:10px;
+        margin-top:12px;
+      }
+
+      .link-btn{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+        padding:12px 14px;
+        border-radius:14px;
+        text-decoration:none;
+        font-weight:800;
+        font-size:14px;
+        border:1px solid rgba(149,3,33,0.12);
+      }
+
+      .link-btn.primary{
+        background: #4a6fa5;
+        color: #fffaef;
+      }
+
+      .link-btn.secondary{
+        background: #4a6fa5;
+        color: #fffaef;
+        border: 1px solid rgba(74,111,165,0.25);
+      }
+
+      .link-btn.primary:hover{
+        opacity: 0.9;
+      }
+
+      .link-btn.secondary:hover{
+        opacity: 0.9;
+      }
+
       </style>
     </head>
     <body>
@@ -1023,6 +1063,15 @@ app.get("/card", requireLogin, async (req, res) => {
 
       <div class="badge">
         <span>Show this screen upon collection to earn a stamp.</span>
+      </div>
+
+      <div class="link-buttons">
+        <a class="link-btn primary" href="https://take.app/brewinsmall" target="_blank" rel="noopener noreferrer">
+          Cravin' a Drink?
+        </a>
+        <a class="link-btn secondary" href="https://t.me/brewinsmall" target="_blank" rel="noopener noreferrer">
+          Join our Channel
+        </a>
       </div>
 
       ${
