@@ -96,6 +96,15 @@ function renderConfettiScript() {
   `;
 }
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ===== DB HELPERS (SUPABASE) =====
 async function getUserById(id) {
   return await supabase.from("users").select("*").eq("id", id).single();
@@ -115,6 +124,29 @@ async function updateUserById(id, patch) {
 
 async function updateUserByUsername(username, patch) {
   return await supabase.from("users").update(patch).eq("username", username).select("*").single();
+}
+
+async function getSetting(key) {
+  return await supabase
+    .from("app_settings")
+    .select("*")
+    .eq("key", key)
+    .single();
+}
+
+async function setSetting(key, value) {
+  return await supabase
+    .from("app_settings")
+    .upsert(
+      {
+        key,
+        value,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" }
+    )
+    .select("*")
+    .single();
 }
 
 // ===== HTML SHELL =====
@@ -527,6 +559,46 @@ function htmlPage(title, body) {
         }
       }
 
+      /* BROADCAST MESSAGE */
+      .broadcast-box{
+        margin-top:12px;
+        padding:14px 16px;
+        border-radius:16px;
+        background: rgba(74,111,165,0.08);
+        border: 1px solid rgba(74,111,165,0.22);
+      }
+
+      .broadcast-title{
+        font-size:12px;
+        font-weight:800;
+        letter-spacing:0.08em;
+        color: var(--secondary);
+        margin-bottom:6px;
+        text-transform: uppercase;
+      }
+
+      .broadcast-text{
+        font-size:14px;
+        line-height:1.4;
+        color: var(--primary);
+        font-weight:600;
+      }
+
+      textarea{
+        width:100%;
+        padding:12px 14px;
+        border-radius:14px;
+        border:1px solid rgba(74,111,165,0.25);
+        font-size:16px;
+        box-sizing:border-box;
+        background: rgba(255,255,255,0.9);
+        color: var(--primary);
+        outline:none;
+        resize: vertical;
+        min-height: 96px;
+        font-family: inherit;
+      }
+
       </style>
     </head>
     <body>
@@ -584,6 +656,9 @@ app.get("/admin/logout", (req, res) => {
 // ===== ADMIN DASHBOARD =====
 app.get("/admin/dashboard", requireAdmin, async (req, res) => {
   const q = (req.query.q || "").trim().toLowerCase();
+
+  const broadcastResult = await getSetting("broadcast_message");
+  const broadcastMessage = broadcastResult.data?.value || "";
 
   let query = supabase
     .from("users")
@@ -662,6 +737,20 @@ app.get("/admin/dashboard", requireAdmin, async (req, res) => {
         <form class="row" method="GET" action="/admin/dashboard">
           <input name="q" placeholder="Search username..." value="${q.replace(/"/g, "&quot;")}" />
           <button type="submit" class="secondary">Search</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Broadcast Message</h3>
+        <p class="muted">This message will appear on the customer loyalty card page.</p>
+
+        <form class="row" method="POST" action="/admin/broadcast">
+          <textarea name="message" placeholder="Type an announcement, update, or promo...">${escapeHtml(broadcastMessage)}</textarea>
+          <button type="submit">Save Broadcast</button>
+        </form>
+
+        <form method="POST" action="/admin/clear-broadcast" style="margin-top:10px;">
+          <button type="submit" class="secondary">Clear Broadcast</button>
         </form>
       </div>
 
@@ -772,6 +861,20 @@ app.post("/admin/redeem-by-username", requireAdmin, async (req, res) => {
   });
 
   return res.redirect("/admin/dashboard?q=" + encodeURIComponent(username));
+});
+
+app.post("/admin/broadcast", requireAdmin, async (req, res) => {
+  const message = (req.body.message || "").trim();
+
+  await setSetting("broadcast_message", message);
+
+  return res.redirect("/admin/dashboard");
+});
+
+app.post("/admin/clear-broadcast", requireAdmin, async (req, res) => {
+  await setSetting("broadcast_message", "");
+
+  return res.redirect("/admin/dashboard");
 });
 
 // ===== CUSTOMER LOGIN PAGE =====
@@ -905,6 +1008,9 @@ app.get("/card", requireLogin, async (req, res) => {
   const stampsToNext = Math.max(STAMPS_FOR_REWARD - (user.stamps || 0), 0);
   const rewardUnlocked = (user.stamps || 0) >= STAMPS_FOR_REWARD;
 
+  const broadcastResult = await getSetting("broadcast_message");
+  const broadcastMessage = broadcastResult.data?.value || "";
+
   res.send(
     htmlPage(
       "Your Loyalty Card",
@@ -918,6 +1024,17 @@ app.get("/card", requireLogin, async (req, res) => {
       <div class="badge">
         <span>Show this screen upon collection to earn a stamp.</span>
       </div>
+
+      ${
+        broadcastMessage
+          ? `
+            <div class="broadcast-box">
+              <div class="broadcast-title">Brewin’ Small Update</div>
+              <div class="broadcast-text">${escapeHtml(broadcastMessage)}</div>
+            </div>
+          `
+          : ""
+      }
 
       <div class="card">
         <div class="stamp-grid">
